@@ -21,6 +21,7 @@ import {
 	renderAcExpandClose,
 	renderAcExpandOpen,
 	renderAcImage,
+	renderAcPanelOpen,
 	renderAcToc,
 	tryDecode,
 } from './storageXhtml';
@@ -236,7 +237,7 @@ export class MarkdownConverter {
 			if (calloutType) {
 				(env as CalloutEnv).__calloutOpen = true;
 				if (calloutType.macro === 'expand') return renderAcExpandOpen(calloutType.title);
-				return `<ac:structured-macro ac:name="${calloutType.macro}"><ac:rich-text-body>`;
+				return renderAcPanelOpen(calloutType.macro, calloutType.title);
 			}
 			return originalBlockquoteOpen
 				? originalBlockquoteOpen(tokens, idx, options, env, self)
