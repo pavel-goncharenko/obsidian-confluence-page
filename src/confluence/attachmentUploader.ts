@@ -104,13 +104,15 @@ export class AttachmentUploader {
 	}
 
 	/**
-	 * Publishes an in-memory binary attachment. Used by Mermaid/PlantUML renderers where no TFile exists.
+	 * Publishes an in-memory binary attachment. Used by Mermaid/PlantUML renderers and draw.io diagrams where no
+	 * TFile holds the uploaded bytes. `mimeType` overrides the extension-based guess (draw.io XML has no extension).
 	 */
 	async uploadBytes(
 		pageId: string,
 		filename: string,
 		data: ArrayBuffer,
 		previous: Record<string, AttachmentRecord> = {},
+		mimeType?: string,
 	): Promise<AttachmentRecord | null> {
 		try {
 			const hash = await sha1Hex(data);
@@ -121,10 +123,10 @@ export class AttachmentUploader {
 			}
 
 			this.logger.info(`Diagram attachment upload started: ${filename}`);
-			const mime = guessMime(filename);
+			const mime = mimeType ?? guessMime(filename);
 			const record = await this.upload(pageId, filename, data, mime, prev?.id);
-			this.logger.info(`Diagram attachment uploaded: ${filename}`);
-			return { hash, id: record.id };
+			this.logger.info(`Diagram attachment uploaded: ${filename}`, `version=${record.version}`);
+			return { hash, id: record.id, version: record.version };
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			this.logger.error(`Diagram attachment upload failed: ${filename}`, msg);
@@ -138,12 +140,12 @@ export class AttachmentUploader {
 		data: ArrayBuffer,
 		mime: string,
 		knownAttachmentId: string | undefined,
-	): Promise<{ id: string }> {
+	): Promise<{ id: string; version: number }> {
 		// Prefer cached attachmentId and updateData; if it fails, fall back to filename-based update.
 		if (knownAttachmentId) {
 			try {
 				const r = await this.api.updateAttachment(pageId, knownAttachmentId, filename, data, mime);
-				return { id: r.id };
+				return { id: r.id, version: r.version };
 			} catch (e) {
 				this.logger.warn(`Attachment update by cached ID failed, retrying by filename: ${filename}`, errorMessage(e));
 			}
@@ -153,14 +155,25 @@ export class AttachmentUploader {
 		if (existing) {
 			try {
 				const r = await this.api.updateAttachment(pageId, existing.id, filename, data, mime);
-				return { id: r.id };
+				return { id: r.id, version: r.version };
 			} catch (e) {
 				this.logger.warn(`Attachment update by filename failed, retrying create-or-update: ${filename}`, errorMessage(e));
 			}
 		}
 
 		const r = await this.api.createOrUpdateAttachment(pageId, filename, data, mime);
-		return { id: r.id };
+		return { id: r.id, version: r.version };
+	}
+
+	/** Looks up the current version of an attachment, for cache records written before versions were recorded. */
+	async currentVersion(pageId: string, filename: string): Promise<number | null> {
+		try {
+			const existing = await this.api.findAttachmentByFilename(pageId, filename);
+			return existing?.version ?? null;
+		} catch (e) {
+			this.logger.warn(`Attachment version lookup failed: ${filename}`, errorMessage(e));
+			return null;
+		}
 	}
 }
 

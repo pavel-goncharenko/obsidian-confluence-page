@@ -264,6 +264,7 @@ Creating a root page directly from a space key is planned. New pages currently r
 | Image size / align / border modifiers       | See [Image attributes](#image-attributes) for details                  |
 | Mermaid blocks                              | Rendered image attachment when enabled                                 |
 | PlantUML blocks                             | Rendered image attachment when enabled                                 |
+| draw.io embeds (`![[x.drawio.svg]]`)        | Editable draw.io macro when enabled, see [draw.io diagrams](#drawio-diagrams) |
 | Internal Macros                             | See [Internal macros](#internal-macros) for details                    |
 
 ## Not converted yet
@@ -407,6 +408,18 @@ Default render services:
 | PlantUML server URL        | `https://www.plantuml.com/plantuml` |
 
 For private documentation, use a self-hosted Kroki or PlantUML service.
+
+### draw.io diagrams
+
+An embedded `.drawio.svg` file (the editable SVG saved by the Obsidian draw.io plugin or draw.io desktop) is published the way the draw.io app for Confluence stores a diagram, so it stays editable on the page:
+
+| Published as                                   | Content                                                       |
+|------------------------------------------------|---------------------------------------------------------------|
+| Attachment `<name>`                            | The diagram XML from the SVG's `content` attribute (`application/vnd.jgraph.mxfile`) |
+| Attachment `<name>.png`                        | Preview rendered from the SVG inside Obsidian                 |
+| `drawio` macro                                 | `diagramName=<name>`, `revision=<version of the XML attachment>` |
+
+`<name>` is the file name without `.drawio.svg`. A width modifier (`![[x.drawio.svg|cpp-w-600]]`) becomes the macro width. Editing the diagram file republishes the note even when its text is unchanged. Publishing is one-way: a diagram edited in Confluence is replaced on the next publish (the older version stays in the attachment history). The Confluence instance needs the draw.io app; turn off "draw.io diagrams as macros" to upload the SVG as a plain image instead. Tested on Confluence Data Center.
 
 ## Settings
 

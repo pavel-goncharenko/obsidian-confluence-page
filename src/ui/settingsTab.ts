@@ -180,6 +180,14 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 						step: 'any',
 					},
 				},
+				{
+					name: t('settings.drawioMacro.name'),
+					desc: t('settings.drawioMacro.desc'),
+					control: {
+						type: 'toggle',
+						key: 'publishDrawioAsMacro',
+					},
+				},
 			]),
 			group(t('settings.section.contentConversion'), [
 				{
@@ -297,6 +305,9 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 				settings.maxAttachmentSizeMB = Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : 10;
 				break;
 			}
+			case 'publishDrawioAsMacro':
+				settings.publishDrawioAsMacro = value === true;
+				break;
 			case 'renderMermaidToPng':
 				settings.renderMermaidToPng = value === true;
 				break;

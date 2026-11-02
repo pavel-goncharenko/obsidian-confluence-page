@@ -9,11 +9,28 @@ import { MarkdownConverter, type ConvertContext, type DiagramBlock } from '../co
 import { AttachmentUploader } from '../confluence/attachmentUploader';
 import { MermaidRenderer } from '../confluence/mermaidRenderer';
 import { PlantUmlRenderer } from '../confluence/plantUmlRenderer';
+import {
+	DRAWIO_MIME,
+	type DrawioMacro,
+	drawioDiagramName,
+	drawioPreviewFilename,
+	isDrawioSvgFilename,
+	parseDrawioSvg,
+	rasterizeSvgToPng,
+} from '../confluence/drawio';
+import { sha1Hex } from '../utils/hash';
 import { readBindingFromCache, writeBinding } from '../frontmatter/handler';
 import { scanPublishableNotes } from './noteScanner';
 import { type Logger } from '../utils/logger';
 import { type ConfluencePagePublisherSettings } from '../settings';
-import { type AttachmentCache, type AttachmentRecord, type BatchPublishResult, type FilePublishResult, type NoteBinding } from '../types';
+import {
+	type AttachmentCache,
+	type AttachmentRecord,
+	type AttachmentRef,
+	type BatchPublishResult,
+	type FilePublishResult,
+	type NoteBinding,
+} from '../types';
 
 export interface PublishEngineDeps {
 	app: App;
@@ -154,7 +171,16 @@ export class PublishEngine {
 			}
 
 			const markdown = await this.deps.app.vault.cachedRead(file);
-			const contentHash = await this.converter.computeContentHash(markdown, pageTitle, path);
+			const refs = await this.converter.extractReferences(markdown, path);
+			const drawioRefs = this.deps.settings.publishDrawioAsMacro
+				? refs.attachments.filter((ref) => ref.tfile && isDrawioSvgFilename(ref.filename))
+				: [];
+			const otherRefs = refs.attachments.filter((ref) => !drawioRefs.includes(ref));
+			// A diagram edit does not change the note text, so the diagram files take part in the skip hash.
+			const contentHash = await this.withDiagramHashes(
+				await this.converter.computeContentHash(markdown, pageTitle, path),
+				drawioRefs,
+			);
 			const previousAttachments = this.getPreviousAttachments(pageId, binding);
 			this.deps.logger.info(
 				`Content hash resolved: ${path}`,
@@ -173,14 +199,16 @@ export class PublishEngine {
 				return { path, skipped: true, success: true };
 			}
 
-			const refs = await this.converter.extractReferences(markdown, path);
 			this.deps.logger.info(
 				`References extracted: ${path}`,
-				`attachments=${refs.attachments.length} mermaid=${refs.mermaid.length} plantuml=${refs.plantUml.length}`,
+				`attachments=${otherRefs.length} drawio=${drawioRefs.length} mermaid=${refs.mermaid.length} plantuml=${refs.plantUml.length}`,
 			);
 
+			const drawio = this.deps.settings.uploadAttachments
+				? await this.publishDrawioDiagrams(pageId, drawioRefs, previousAttachments)
+				: { macros: new Map<string, DrawioMacro>(), records: {} as Record<string, AttachmentRecord>, fallback: drawioRefs };
 			const attachmentResult = this.deps.settings.uploadAttachments
-				? await this.uploader.uploadReferencedAttachments(pageId, refs.attachments, previousAttachments)
+				? await this.uploader.uploadReferencedAttachments(pageId, [...otherRefs, ...drawio.fallback], previousAttachments)
 				: { map: {} as Record<string, AttachmentRecord>, uploaded: 0, skipped: 0, failed: 0 };
 
 			const mermaid = await this.renderAndUploadDiagrams(this.mermaid, refs.mermaid, pageId, previousAttachments);
@@ -195,6 +223,7 @@ export class PublishEngine {
 
 			const allAttachedFilenames = new Set<string>([
 				...Object.keys(attachmentResult.map),
+				...Object.keys(drawio.records),
 				...Object.keys(mermaidRecords),
 				...Object.keys(plantUmlRecords),
 			]);
@@ -202,6 +231,7 @@ export class PublishEngine {
 				attachedFilenames: allAttachedFilenames,
 				mermaidFilenameByHash,
 				plantUmlFilenameByHash,
+				drawioMacros: drawio.macros,
 				renderMermaidToPng: this.deps.settings.renderMermaidToPng,
 				renderPlantUmlToPng: this.deps.settings.renderPlantUmlToPng,
 			};
@@ -213,6 +243,7 @@ export class PublishEngine {
 			const mergedAttachments: Record<string, AttachmentRecord> = {
 				...previousAttachments,
 				...attachmentResult.map,
+				...drawio.records,
 				...mermaidRecords,
 				...plantUmlRecords,
 			};
@@ -307,6 +338,80 @@ export class PublishEngine {
 
 	private getPreviousAttachments(pageId: string, binding: NoteBinding): Record<string, AttachmentRecord> {
 		return { ...(binding.attachments?.[pageId] ?? {}) };
+	}
+
+	/** Folds the bytes of embedded diagram files into the note's content hash. Unchanged when there are none. */
+	private async withDiagramHashes(contentHash: string, refs: AttachmentRef[]): Promise<string> {
+		if (refs.length === 0) return contentHash;
+		const parts = [contentHash];
+		for (const ref of refs) {
+			if (!ref.tfile) continue;
+			parts.push(`${ref.filename}:${await sha1Hex(await this.deps.app.vault.readBinary(ref.tfile))}`);
+		}
+		return sha1Hex(parts.join('\n'));
+	}
+
+	/**
+	 * Publishes embedded `.drawio.svg` files as draw.io diagrams: the diagram XML and a PNG preview become page
+	 * attachments, and the embed renders as the draw.io macro pointing at the XML attachment's version.
+	 * Files without diagram XML fall back to the plain image upload.
+	 */
+	private async publishDrawioDiagrams(
+		pageId: string,
+		refs: AttachmentRef[],
+		previousAttachments: Record<string, AttachmentRecord>,
+	): Promise<{ macros: Map<string, DrawioMacro>; records: Record<string, AttachmentRecord>; fallback: AttachmentRef[] }> {
+		const macros = new Map<string, DrawioMacro>();
+		const records: Record<string, AttachmentRecord> = {};
+		const fallback: AttachmentRef[] = [];
+
+		for (const ref of refs) {
+			if (!ref.tfile || macros.has(ref.filename)) continue;
+			const svgText = await this.deps.app.vault.cachedRead(ref.tfile);
+			const parsed = parseDrawioSvg(svgText);
+			if (!parsed) {
+				this.deps.logger.warn(`No draw.io diagram inside ${ref.filename}; publishing it as an image`);
+				fallback.push(ref);
+				continue;
+			}
+
+			const diagramName = drawioDiagramName(ref.filename);
+			const xml = new TextEncoder().encode(parsed.mxfile);
+			const xmlBytes = xml.buffer.slice(xml.byteOffset, xml.byteOffset + xml.byteLength);
+			const xmlRecord = await this.uploader.uploadBytes(pageId, diagramName, xmlBytes, previousAttachments, DRAWIO_MIME);
+			if (!xmlRecord) {
+				fallback.push(ref);
+				continue;
+			}
+			const revision = xmlRecord.version ?? await this.uploader.currentVersion(pageId, diagramName) ?? 1;
+			records[diagramName] = { ...xmlRecord, version: revision };
+
+			const previewName = drawioPreviewFilename(diagramName);
+			const xmlReused = previousAttachments[diagramName]?.hash === xmlRecord.hash;
+			const previousPreview = previousAttachments[previewName];
+			if (xmlReused && previousPreview) {
+				records[previewName] = previousPreview;
+			} else if (parsed.width && parsed.height) {
+				try {
+					const png = await rasterizeSvgToPng(svgText, parsed.width, parsed.height);
+					const pngRecord = png ? await this.uploader.uploadBytes(pageId, previewName, png, previousAttachments) : null;
+					if (pngRecord) records[previewName] = pngRecord;
+					else this.deps.logger.warn(`draw.io preview not produced: ${previewName}`);
+				} catch (e) {
+					this.deps.logger.warn(`draw.io preview failed: ${previewName}`, e instanceof Error ? e.message : String(e));
+				}
+			}
+
+			macros.set(ref.filename, {
+				diagramName,
+				revision,
+				diagramWidth: parsed.width,
+				diagramHeight: parsed.height,
+			});
+			this.deps.logger.info(`draw.io diagram published: ${diagramName}`, `revision=${revision}`);
+		}
+
+		return { macros, records, fallback };
 	}
 
 	/** Renders a set of diagram blocks and uploads each successfully rendered PNG as an attachment. */

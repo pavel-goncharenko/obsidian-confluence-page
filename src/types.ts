@@ -42,6 +42,8 @@ export interface NoteBinding {
 export interface AttachmentRecord {
 	hash: string;
 	id: string;
+	/** Attachment version number. Recorded for draw.io diagrams, whose macro points at a specific revision. */
+	version?: number;
 }
 
 /** pageId -> filename -> { hash, id } attachment cache persisted in note frontmatter. */
