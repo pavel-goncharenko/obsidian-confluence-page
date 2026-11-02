@@ -41,6 +41,15 @@ describe('MarkdownConverter', () => {
 		expect(html).not.toContain('confluence_url');
 	});
 
+	it('strips frontmatter from notes with Windows line endings', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('---\r\ntitle: Note\r\nconfluence_url: test\r\n---\r\n# Title\r\n\r\nText', 'note.md', createContext());
+
+		expect(html).toContain('<h1>Title</h1>');
+		expect(html).not.toContain('confluence_url');
+		expect(html).not.toContain('title: Note');
+	});
+
 	it('removes internal ignore line and ignore block macros before rendering', async () => {
 		const converter = new MarkdownConverter(createApp());
 		const html = await converter.convert([
