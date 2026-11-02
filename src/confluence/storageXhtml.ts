@@ -17,18 +17,14 @@ export function detectCalloutType(tokens: ReadonlyArray<{ type: string; content?
 		let title = '';
 		if (tk.children?.[0]) {
 			tk.children[0].content = tk.children[0].content.replace(stripRe, '');
-			if (macro === 'expand') {
-				// The expand macro shows its title on the collapsed toggle via ac:parameter (see
-				// renderAcExpandOpen), so the title line is pulled out of the body entirely here —
-				// otherwise it would render a second time as the body's first line once expanded.
-				const children = tk.children;
-				const breakIdx = children.findIndex((c) => c.type === 'softbreak' || c.type === 'hardbreak');
-				const titleChildren = breakIdx === -1 ? children : children.slice(0, breakIdx);
-				title = titleChildren.map((c) => c.content).join('').trim();
-				children.splice(0, breakIdx === -1 ? children.length : breakIdx + 1);
-			} else {
-				title = tk.children[0].content;
-			}
+			// Every callout macro shows its title via ac:parameter (the expand toggle, the panel's optional
+			// title), so the title line is pulled out of the body entirely here — otherwise it would run into
+			// the body's first line as one paragraph ("Title Body text…").
+			const children = tk.children;
+			const breakIdx = children.findIndex((c) => c.type === 'softbreak' || c.type === 'hardbreak');
+			const titleChildren = breakIdx === -1 ? children : children.slice(0, breakIdx);
+			title = titleChildren.map((c) => c.content).join('').trim();
+			children.splice(0, breakIdx === -1 ? children.length : breakIdx + 1);
 		} else {
 			tk.content = tk.content?.replace(stripRe, '') ?? '';
 			title = tk.content;
@@ -70,6 +66,12 @@ export function renderAcCode(language: string, code: string): string {
 /** Opening half of a `<details><summary>title</summary>...</details>` block's expand macro — paired with
  * renderAcExpandClose() around the body, which is rendered as normal nested Markdown by the caller (see
  * the confluence_expand block rule in markdownConverter.ts), not passed in as a string here. */
+/** Opens an info / note / warning / tip panel; the callout title becomes the panel's optional title. */
+export function renderAcPanelOpen(macro: string, title: string): string {
+	const titlePart = title ? `<ac:parameter ac:name="title">${escapeXml(title)}</ac:parameter>` : '';
+	return `<ac:structured-macro ac:name="${macro}">${titlePart}<ac:rich-text-body>`;
+}
+
 export function renderAcExpandOpen(title: string): string {
 	const titlePart = title ? `<ac:parameter ac:name="title">${escapeXml(title)}</ac:parameter>` : '';
 	return `<ac:structured-macro ac:name="expand">${titlePart}<ac:rich-text-body>`;

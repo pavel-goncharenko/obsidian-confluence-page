@@ -21,9 +21,11 @@ import {
 	renderAcExpandClose,
 	renderAcExpandOpen,
 	renderAcImage,
+	renderAcPanelOpen,
 	renderAcToc,
 	tryDecode,
 } from './storageXhtml';
+import { type DrawioMacro, renderAcDrawio, unwrapDrawioParagraphs } from './drawio';
 
 export interface DiagramBlock {
 	/** Source sha1 hex. Used as the cache key and filename prefix. */
@@ -49,6 +51,8 @@ export interface ConvertContext {
 	mermaidFilenameByHash: Map<string, string>;
 	/** hash -> successfully uploaded PlantUML PNG filename. */
 	plantUmlFilenameByHash: Map<string, string>;
+	/** Embedded `.drawio.svg` filename -> published draw.io macro. Those embeds render as the macro, not an image. */
+	drawioMacros?: Map<string, DrawioMacro>;
 	/** Feature flags. */
 	renderMermaidToPng: boolean;
 	renderPlantUmlToPng: boolean;
@@ -89,7 +93,7 @@ export class MarkdownConverter {
 		const md = this.buildRenderer(ctx, fenceHashMap);
 		const html = md.render(preprocessed);
 
-		return postProcessHtml(html);
+		return postProcessHtml(unwrapDrawioParagraphs(html));
 	}
 
 	/** Computes a stable content hash for publish skipping. Ignored blocks are intentionally excluded. */
@@ -215,6 +219,10 @@ export class MarkdownConverter {
 			}
 			const decoded = tryDecode(src);
 			const filename = decoded.split('/').pop() ?? decoded;
+			const drawio = ctx.drawioMacros?.get(filename);
+			if (drawio) {
+				return renderAcDrawio({ ...drawio, width: attrs.width ?? drawio.width });
+			}
 			if (ctx.attachedFilenames.has(filename)) {
 				return renderAcImage(filename, attrs);
 			}
@@ -229,7 +237,7 @@ export class MarkdownConverter {
 			if (calloutType) {
 				(env as CalloutEnv).__calloutOpen = true;
 				if (calloutType.macro === 'expand') return renderAcExpandOpen(calloutType.title);
-				return `<ac:structured-macro ac:name="${calloutType.macro}"><ac:rich-text-body>`;
+				return renderAcPanelOpen(calloutType.macro, calloutType.title);
 			}
 			return originalBlockquoteOpen
 				? originalBlockquoteOpen(tokens, idx, options, env, self)

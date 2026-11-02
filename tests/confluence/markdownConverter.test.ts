@@ -41,6 +41,15 @@ describe('MarkdownConverter', () => {
 		expect(html).not.toContain('confluence_url');
 	});
 
+	it('strips frontmatter from notes with Windows line endings', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('---\r\ntitle: Note\r\nconfluence_url: test\r\n---\r\n# Title\r\n\r\nText', 'note.md', createContext());
+
+		expect(html).toContain('<h1>Title</h1>');
+		expect(html).not.toContain('confluence_url');
+		expect(html).not.toContain('title: Note');
+	});
+
 	it('removes internal ignore line and ignore block macros before rendering', async () => {
 		const converter = new MarkdownConverter(createApp());
 		const html = await converter.convert([
@@ -121,9 +130,9 @@ describe('MarkdownConverter', () => {
 		const converter = new MarkdownConverter(createApp());
 		const html = await converter.convert('> [!warning] Heads up\n> Be careful.', 'note.md', createContext());
 
-		expect(html).toContain('<ac:structured-macro ac:name="warning">');
-		expect(html).toContain('Heads up');
-		expect(html).toContain('Be careful');
+		expect(html).toContain('<ac:structured-macro ac:name="warning"><ac:parameter ac:name="title">Heads up</ac:parameter><ac:rich-text-body>');
+		expect(html.match(/Heads up/g)).toHaveLength(1);
+		expect(html).toContain('<p>Be careful.</p>');
 	});
 
 	it('converts a foldable callout to a Confluence expand macro regardless of its icon type', async () => {
@@ -153,6 +162,14 @@ describe('MarkdownConverter', () => {
 		const html = await converter.convert('> [!note]- Just a title, no body', 'note.md', createContext());
 
 		expect(html).toContain('<ac:parameter ac:name="title">Just a title, no body</ac:parameter>');
+	});
+
+	it('leaves the panel title empty for a callout without a title', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('> [!note]\n> Body only.', 'note.md', createContext());
+
+		expect(html).toContain('<ac:structured-macro ac:name="info"><ac:rich-text-body>');
+		expect(html).toContain('<p>Body only.</p>');
 	});
 
 	it('falls back to the info macro for an unrecognized, non-foldable callout type', async () => {

@@ -35,6 +35,11 @@ export class Logger {
 
 	private push(level: LogEntry['level'], message: string, details?: string): void {
 		this.logs.push({ timestamp: new Date(), level, message, details });
+		// Mirrored to the developer console: the in-memory log has no viewer, and a failed upload is otherwise invisible.
+		const line = details ? `[confluence-publisher] ${message} | ${details}` : `[confluence-publisher] ${message}`;
+		if (level === 'error') console.error(line);
+		else if (level === 'warn') console.warn(line);
+		else console.debug(line);
 		if (this.logs.length > this.maxLogs) {
 			this.logs = this.logs.slice(-this.maxLogs);
 		}

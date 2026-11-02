@@ -41,6 +41,8 @@ export interface ConfluencePagePublisherSettings {
 	// ========== Publishing assets ==========
 	uploadAttachments: boolean;
 	maxAttachmentSizeMB: number;
+	/** Publishes embedded `.drawio.svg` files as editable draw.io macros instead of flat images. */
+	publishDrawioAsMacro: boolean;
 
 	// ========== Content conversion ==========
 	renderMermaidToPng: boolean;
@@ -72,6 +74,7 @@ export const DEFAULT_SETTINGS: ConfluencePagePublisherSettings = {
 
 	uploadAttachments: true,
 	maxAttachmentSizeMB: 10,
+	publishDrawioAsMacro: true,
 
 	renderMermaidToPng: true,
 	mermaidRenderUrl: 'https://kroki.io/mermaid/png',

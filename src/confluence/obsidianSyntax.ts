@@ -9,7 +9,9 @@ export interface ObsidianPreprocessContext {
 
 export interface FenceBlock { lang: string; content: string; }
 
-export function stripFrontmatter(md: string): string {
+export function stripFrontmatter(markdown: string): string {
+	// Notes saved with Windows line endings (CRLF) would otherwise keep their frontmatter and leak it into the page.
+	const md = markdown.replace(/\r\n?/g, '\n');
 	if (!md.startsWith('---')) return md;
 	const m = md.match(/^---\n[\s\S]*?\n---\n?/);
 	if (!m) return md;

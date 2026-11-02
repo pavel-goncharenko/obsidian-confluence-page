@@ -164,6 +164,10 @@ export const en = {
 			name: 'Max attachment size (MB)',
 			desc: 'Attachments larger than this are skipped',
 		},
+		drawioMacro: {
+			name: 'draw.io diagrams as macros',
+			desc: 'When enabled, embedded .drawio.svg files are published as editable draw.io macros (diagram XML and a PNG preview as attachments). Needs the draw.io app in Confluence. When disabled, they are uploaded as plain SVG images.',
+		},
 		diagramsIntro:
 			'When enabled, matching code blocks are pre-rendered via a rendering service and uploaded as PNG attachments. When disabled, the code block is pushed as-is and rendered by a Confluence-side macro or shown as source.',
 		mermaid: {
