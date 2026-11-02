@@ -159,6 +159,15 @@ export class AttachmentUploader {
 			} catch (e) {
 				this.logger.warn(`Attachment update by filename failed, retrying create-or-update: ${filename}`, errorMessage(e));
 			}
+		} else {
+			// A new attachment is created with POST: some Server / Data Center instances answer PUT on this
+			// endpoint with 405 Method Not Allowed. PUT (create-or-update) stays as the fallback.
+			try {
+				const r = await this.api.createAttachment(pageId, filename, data, mime);
+				return { id: r.id, version: r.version };
+			} catch (e) {
+				this.logger.warn(`Attachment create failed, retrying create-or-update: ${filename}`, errorMessage(e));
+			}
 		}
 
 		const r = await this.api.createOrUpdateAttachment(pageId, filename, data, mime);
