@@ -18,7 +18,7 @@ import {
 	parseDrawioSvg,
 	rasterizeSvgToPng,
 } from '../confluence/drawio';
-import { sha1Hex } from '../utils/hash';
+import { sha1Hex, sha1HexOfFile } from '../utils/hash';
 import { readBindingFromCache, writeBinding } from '../frontmatter/handler';
 import { scanPublishableNotes } from './noteScanner';
 import { type Logger } from '../utils/logger';
@@ -346,8 +346,10 @@ export class PublishEngine {
 		const parts = [contentHash];
 		for (const ref of refs) {
 			if (!ref.tfile) continue;
-			parts.push(`${ref.filename}:${await sha1Hex(await this.deps.app.vault.readBinary(ref.tfile))}`);
+			const bytes = await this.deps.app.vault.readBinary(ref.tfile);
+			parts.push(`${ref.filename}:${await sha1HexOfFile(bytes, ref.filename)}`);
 		}
+		this.deps.logger.info('Hash parts', parts.join(' | '));
 		return sha1Hex(parts.join('\n'));
 	}
 

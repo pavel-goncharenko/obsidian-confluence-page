@@ -1,7 +1,7 @@
 import type { App, TFile } from 'obsidian';
 import { type ConfluenceApi } from './api';
 import { type AttachmentRecord, type AttachmentRef } from '../types';
-import { sha1Hex } from '../utils/hash';
+import { sha1Hex, sha1HexOfFile } from '../utils/hash';
 import { type Logger } from '../utils/logger';
 
 export interface AttachmentUploadOptions {
@@ -80,7 +80,7 @@ export class AttachmentUploader {
 					continue;
 				}
 
-				const hash = await sha1Hex(bytes);
+				const hash = await sha1HexOfFile(bytes, filename);
 				const prev = previous[filename];
 				if (prev && prev.hash === hash) {
 					result.map[filename] = prev;
